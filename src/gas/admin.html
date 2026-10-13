@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic", sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: #f5f5f5;
+    color: #333;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; color: #2c3e50; }
+  .subtitle { font-size: 13px; color: #7f8c8d; margin: 0 0 20px; }
+  h2 { font-size: 18px; margin: 24px 0 12px; color: #34495e; }
+  .card {
+    background: white;
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .field-label {
+    font-size: 13px;
+    color: #555;
+    font-weight: 600;
+    display: block;
+  }
+  input[type="text"], input[type="number"] {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px 10px;
+    margin-top: 4px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #333;
+  }
+  input[type="text"]:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: #3498db;
+  }
+  .search-box { width: 300px; max-width: 100%; margin-top: 0; }
+  .btn {
+    padding: 10px 20px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn:hover { background: #2980b9; }
+  .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+  .btn-secondary { background: #95a5a6; }
+  .btn-secondary:hover { background: #7f8c8d; }
+  .btn-sm { padding: 6px 12px; font-size: 13px; }
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .hint { font-size: 12px; color: #95a5a6; }
+  .note { display: block; font-size: 12px; color: #95a5a6; margin-top: 4px; }
+
+  /* フォーム */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px 20px;
+  }
+  .check-label {
+    font-size: 13px;
+    color: #555;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: end;
+    padding-bottom: 8px;
+  }
+  .student-card { background: #fbfbfc; }
+
+  /* テーブル */
+  table {
+    width: 100%;
+    background: white;
+    border-collapse: collapse;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    margin-bottom: 8px;
+  }
+  th {
+    background: #ecf0f1;
+    padding: 11px 12px;
+    text-align: left;
+    font-size: 13px;
+    color: #555;
+    border-bottom: 1px solid #ddd;
+  }
+  td {
+    padding: 11px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  .file-name {
+    color: #7f8c8d;
+    font-size: 12px;
+    font-family: ui-monospace, "SF Mono", monospace;
+  }
+  .loading { text-align: center; padding: 32px; color: #7f8c8d; }
+  .empty {
+    text-align: center;
+    padding: 24px;
+    color: #7f8c8d;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .error-box {
+    background: #fdecea;
+    color: #c0392b;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+  <h1>recipients-admin 受信者管理</h1>
+  <p class="subtitle">共有スプレッドシート line-recipients の入力画面（Families / Students）</p>
+
+  <div id="error" class="error-box" style="display:none;"></div>
+
+  <!-- 一覧・検索 -->
+  <div id="listView">
+    <div class="card">
+      <div class="btn-row">
+        <input id="search" type="text" class="search-box" placeholder="宛名・生徒氏名で絞り込み" oninput="renderList()">
+        <button class="btn" onclick="openNewFamily()">新規family追加</button>
+        <button class="btn btn-secondary" onclick="reload()">再読み込み</button>
+      </div>
+      <p class="hint" style="margin:10px 0 0;">退塾は在籍フラグを FALSE にします（行の削除はできません）。</p>
+    </div>
+    <div id="listArea"><div class="loading">読み込み中…</div></div>
+  </div>
+
+  <!-- 編集 -->
+  <div id="editView" style="display:none;">
+    <div class="btn-row" style="margin-bottom:12px;">
+      <button class="btn btn-secondary" onclick="backToList()">← 一覧へ戻る</button>
+    </div>
+    <h2 id="editTitle">家族の編集</h2>
+
+    <div class="card">
+      <div class="form-grid">
+        <label class="field-label">家族ID<input id="f_familyId" type="text"></label>
+        <label class="field-label">宛名<input id="f_name" type="text"></label>
+        <label class="field-label">保護者LINE_USER_ID<input id="f_guardianId" type="text"></label>
+        <label class="field-label">登録日<input id="f_registered" type="text"></label>
+        <label class="field-label">配信区分<input id="f_kubun" type="text">
+          <span class="note">billing-line専用。schedule / proposal では参照しません</span></label>
+        <label class="check-label"><input id="f_enabled" type="checkbox"> 配信有効フラグ（チェック＝TRUE）</label>
+      </div>
+    </div>
+
+    <h2>所属生徒</h2>
+    <p class="hint" style="margin:-4px 0 12px;">退塾は在籍フラグを FALSE に（行削除はしません）。生徒氏名は入力した文字列をそのまま保存します。</p>
+    <div id="studentsArea"></div>
+    <div class="btn-row" style="margin:4px 0 20px;">
+      <button class="btn btn-secondary" onclick="addStudent(null)">この家族に生徒を追加</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" onclick="doSave()">保存</button>
+    </div>
+  </div>
+
+<script>
+  var DATA = { families: [], existingFamilyIds: [], existingStudentIds: [] };
+  var CUR = { isNewFamily: false, originalFamilyId: '' };
+
+  window.onload = reload;
+
+  function reload() {
+    showError('');
+    document.getElementById('listArea').innerHTML = '<div class="loading">読み込み中…</div>';
+    google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getData();
+  }
+  function onData(d) { DATA = d; backToList(); renderList(); }
+  function onErr(e) { showError((e && e.message) ? e.message : String(e)); }
+
+  function showError(msg) {
+    var el = document.getElementById('error');
+    if (!msg) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = 'block';
+    el.textContent = 'エラー: ' + msg;
+  }
+
+  // === 一覧 ===
+  function renderList() {
+    var term = (document.getElementById('search').value || '').trim();
+    var fams = DATA.families.filter(function(f) {
+      if (!term) return true;
+      if ((f.name || '').indexOf(term) !== -1) return true;
+      return (f.students || []).some(function(s) { return (s.studentName || '').indexOf(term) !== -1; });
+    });
+    var html = '<h2>家族一覧（' + fams.length + '件）</h2>';
+    if (!fams.length) {
+      document.getElementById('listArea').innerHTML = html + '<div class="empty">該当する家族がありません。</div>';
+      return;
+    }
+    html += '<table><thead><tr><th>家族ID</th><th>宛名</th><th>所属生徒</th><th>配信有効</th><th></th></tr></thead><tbody>';
+    fams.forEach(function(f) {
+      var idx = DATA.families.indexOf(f);
+      var names = (f.students || []).map(function(s) { return escapeHtml(s.studentName); }).join('、');
+      html += '<tr>' +
+        '<td class="file-name">' + escapeHtml(f.familyId) + '</td>' +
+        '<td>' + escapeHtml(f.name) + '</td>' +
+        '<td>' + (names || '<span class="hint">（生徒なし）</span>') + '</td>' +
+        '<td>' + (f.enabled ? 'TRUE' : 'FALSE') + '</td>' +
+        '<td><button class="btn btn-sm" onclick="openEdit(' + idx + ')">編集</button></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('listArea').innerHTML = html;
+  }
+
+  function backToList() {
+    document.getElementById('editView').style.display = 'none';
+    document.getElementById('listView').style.display = '';
+  }
+  function showEdit() {
+    document.getElementById('listView').style.display = 'none';
+    document.getElementById('editView').style.display = '';
+    window.scrollTo(0, 0);
+  }
+
+  // === 編集を開く ===
+  function openNewFamily() {
+    CUR = { isNewFamily: true, originalFamilyId: '' };
+    setVal('f_familyId', 'F');       // 「F」をあらかじめ入れる。残りは手入力（自動採番しない）
+    setVal('f_name', '');
+    setVal('f_guardianId', '');
+    setVal('f_registered', '');
+    setVal('f_kubun', '');
+    setChk('f_enabled', true);        // 新規の既定は TRUE
+    document.getElementById('studentsArea').innerHTML = '';
+    document.getElementById('editTitle').textContent = '家族の新規追加';
+    showEdit();
+  }
+
+  function openEdit(idx) {
+    var f = DATA.families[idx];
+    CUR = { isNewFamily: false, originalFamilyId: f.familyId };
+    setVal('f_familyId', f.familyId);
+    setVal('f_name', f.name);
+    setVal('f_guardianId', f.guardianId);
+    setVal('f_registered', f.registered);
+    setVal('f_kubun', f.kubun);
+    setChk('f_enabled', !!f.enabled);
+    document.getElementById('studentsArea').innerHTML = '';
+    (f.students || []).forEach(function(s) { addStudent(s); });
+    document.getElementById('editTitle').textContent = '家族の編集';
+    showEdit();
+  }
+
+  function addStudent(s) {
+    var isNew = !s;
+    var card = document.createElement('div');
+    card.className = 'card student-card';
+    card.dataset.isnew = isNew ? '1' : '0';
+    card.dataset.origid = isNew ? '' : (s.studentId || '');
+    card.innerHTML =
+      '<div class="form-grid">' +
+      field('生徒ID', 's_studentId', isNew ? '' : s.studentId) +
+      field('学年', 's_grade', isNew ? '' : s.grade) +
+      field('生徒氏名', 's_studentName', isNew ? '' : s.studentName) +
+      numField('兄弟順位', 's_siblingOrder', isNew ? '1' : s.siblingOrder) +
+      field('生徒LINE_USER_ID', 's_lineId', isNew ? '' : s.lineId) +
+      '<label class="check-label"><input class="s_enrolled" type="checkbox"' +
+        ((isNew ? true : !!s.enrolled) ? ' checked' : '') + '> 在籍フラグ（チェック＝TRUE）</label>' +
+      '</div>';
+    document.getElementById('studentsArea').appendChild(card);
+  }
+
+  function field(label, cls, v) {
+    return '<label class="field-label">' + label +
+      '<input class="' + cls + '" type="text" value="' + attr(v) + '"></label>';
+  }
+  function numField(label, cls, v) {
+    return '<label class="field-label">' + label +
+      '<input class="' + cls + '" type="number" value="' + attr(v) + '"></label>';
+  }
+
+  // === 保存 ===
+  function doSave() {
+    var family = {
+      familyId: val('f_familyId'),
+      name: val('f_name'),
+      kubun: val('f_kubun'),
+      guardianId: val('f_guardianId'),
+      registered: val('f_registered'),
+      enabled: chk('f_enabled')
+    };
+    var students = [];
+    var cards = document.querySelectorAll('#studentsArea .student-card');
+    cards.forEach(function(card) {
+      students.push({
+        isNew: card.dataset.isnew === '1',
+        originalStudentId: card.dataset.origid || '',
+        studentId: cval(card, 's_studentId'),
+        grade: cval(card, 's_grade'),
+        studentName: cval(card, 's_studentName'), // 加工しない
+        siblingOrder: cval(card, 's_siblingOrder'),
+        enrolled: cchk(card, 's_enrolled'),
+        lineId: cval(card, 's_lineId')
+      });
+    });
+
+    // 警告を収集（保存はブロックしない）
+    var warn = [];
+    if (family.guardianId && !isLineId(family.guardianId)) {
+      warn.push('保護者LINE_USER_IDの形式が不正（Uで始まる33文字）：' + family.guardianId);
+    }
+    students.forEach(function(s) {
+      if (s.lineId && !isLineId(s.lineId)) {
+        warn.push('生徒LINE_USER_IDの形式が不正（Uで始まる33文字）：' +
+          (s.studentName || s.studentId || '(無名)') + ' → ' + s.lineId);
+      }
+    });
+    // 家族ID重複
+    if (CUR.isNewFamily) {
+      if (DATA.existingFamilyIds.indexOf(family.familyId) !== -1) warn.push('家族IDが既存と重複：' + family.familyId);
+    } else if (family.familyId !== CUR.originalFamilyId &&
+               DATA.existingFamilyIds.indexOf(family.familyId) !== -1) {
+      warn.push('家族IDが既存と重複：' + family.familyId);
+    }
+    // 生徒ID重複（既存）
+    students.forEach(function(s) {
+      if (!s.studentId) return;
+      if (s.isNew) {
+        if (DATA.existingStudentIds.indexOf(s.studentId) !== -1) warn.push('生徒IDが既存と重複：' + s.studentId);
+      } else if (s.studentId !== s.originalStudentId &&
+                 DATA.existingStudentIds.indexOf(s.studentId) !== -1) {
+        warn.push('生徒IDが既存と重複：' + s.studentId);
+      }
+    });
+    // 生徒ID重複（画面内）
+    var seen = {};
+    students.forEach(function(s) {
+      if (!s.studentId) return;
+      if (seen[s.studentId]) warn.push('同じ生徒IDが画面内に複数：' + s.studentId);
+      seen[s.studentId] = true;
+    });
+
+    var msg = '保存します。\n\n';
+    if (warn.length) msg += '⚠ 警告（警告があっても保存はできます）:\n- ' + warn.join('\n- ') + '\n\n';
+    msg += 'よろしいですか？';
+    if (!confirm(msg)) return;
+
+    var payload = {
+      isNewFamily: CUR.isNewFamily,
+      originalFamilyId: CUR.originalFamilyId,
+      family: family,
+      students: students
+    };
+    showError('');
+    google.script.run.withSuccessHandler(onSaved).withFailureHandler(onErr).saveFamily(payload);
+  }
+
+  function onSaved(res) {
+    alert('保存しました。\n家族：' + (res.familyAction === 'append' ? '新規追加' : '更新') +
+      '\n生徒：追加 ' + res.studentAppended + '件／更新 ' + res.studentUpdated + '件');
+    reload();
+  }
+
+  function isLineId(v) { v = String(v); return v.length === 33 && v.charAt(0) === 'U'; }
+
+  // === DOM ヘルパー ===
+  function val(id) { return document.getElementById(id).value; }
+  function chk(id) { return document.getElementById(id).checked; }
+  function setVal(id, v) { document.getElementById(id).value = (v == null ? '' : v); }
+  function setChk(id, b) { document.getElementById(id).checked = !!b; }
+  function cval(card, cls) { return card.querySelector('.' + cls).value; }
+  function cchk(card, cls) { return card.querySelector('.' + cls).checked; }
+
+  function attr(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escapeHtml(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+</script>
+</body>
+</html>

@@ -69,7 +69,8 @@ function getData() {
 
   var families = [];
   var existingFamilyIds = [];
-  fam.rows.forEach(function(row) {
+  fam.rows.forEach(function(row, i) {
+    var raw = fam.vals[i];
     var fid = _trim(row[fam.col['家族ID']]);
     if (fid) existingFamilyIds.push(fid);
     families.push({
@@ -77,7 +78,7 @@ function getData() {
       name: _cell(row[fam.col['宛名']]),
       kubun: _cell(row[fam.col['配信区分']]),
       guardianId: _trim(row[fam.col['保護者LINE_USER_ID']]),
-      registered: _cell(row[fam.col['登録日']]),
+      registered: _registeredToInput(raw[fam.col['登録日']]), // 日付型 → yyyy-MM-dd（Asia/Tokyo）
       enabled: _isEnrolled(row[fam.col['配信有効フラグ']]),
       students: studentsByFamily[fid] || []
     });
@@ -86,7 +87,8 @@ function getData() {
   return {
     families: families,
     existingFamilyIds: existingFamilyIds,
-    existingStudentIds: existingStudentIds
+    existingStudentIds: existingStudentIds,
+    today: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd') // 新規追加の登録日初期値（Asia/Tokyo）
   };
 }
 
@@ -122,7 +124,7 @@ function saveFamily(payload) {
     _setCell(famSheet, nf, fc['宛名'], f.name);
     _setCell(famSheet, nf, fc['配信区分'], f.kubun);
     _setCell(famSheet, nf, fc['保護者LINE_USER_ID'], f.guardianId);
-    _setCell(famSheet, nf, fc['登録日'], f.registered);
+    _setCell(famSheet, nf, fc['登録日'], _registeredToCellValue(f.registered));
     _setCell(famSheet, nf, fc['配信有効フラグ'], !!f.enabled);
     familyAction = 'append';
   } else {
@@ -131,7 +133,7 @@ function saveFamily(payload) {
     _setIfChanged(famSheet, famRow, fc['宛名'], f.name, cf[fc['宛名']]);
     _setIfChanged(famSheet, famRow, fc['配信区分'], f.kubun, cf[fc['配信区分']]);
     _setIfChanged(famSheet, famRow, fc['保護者LINE_USER_ID'], f.guardianId, cf[fc['保護者LINE_USER_ID']]);
-    _setIfChanged(famSheet, famRow, fc['登録日'], f.registered, cf[fc['登録日']]);
+    _setRegisteredIfChanged(famSheet, famRow, fc['登録日'], f.registered, famRead.vals[famRow - 2][fc['登録日']]);
     _setBoolIfChanged(famSheet, famRow, fc['配信有効フラグ'], !!f.enabled, cf[fc['配信有効フラグ']]);
     familyAction = 'update';
   }
@@ -187,7 +189,9 @@ function _readForEdit(ss, sheetName, headers) {
   if (lastRow < 1 || lastCol < 1) {
     throw new Error('「' + sheetName + '」シートにヘッダ行がありません。');
   }
-  var disp = sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues();
+  var range = sheet.getRange(1, 1, lastRow, lastCol);
+  var disp = range.getDisplayValues();
+  var raw = range.getValues(); // 型つき生値（登録日の日付判定に使う）
   var header = disp[0].map(function(h) { return _normalizeName(h); });
   var col = {};
   var missing = [];
@@ -198,7 +202,7 @@ function _readForEdit(ss, sheetName, headers) {
   if (missing.length) {
     throw new Error('「' + sheetName + '」シートに列が見つかりません: ' + missing.join(', '));
   }
-  return { col: col, rows: disp.slice(1) };
+  return { col: col, rows: disp.slice(1), vals: raw.slice(1) };
 }
 
 /**
@@ -254,6 +258,52 @@ function _setIfChanged(sheet, row, col0, newVal, curDisplay) {
 function _setBoolIfChanged(sheet, row, col0, newBool, curDisplay) {
   if (!!newBool !== _isEnrolled(curDisplay)) {
     sheet.getRange(row, col0 + 1).setValue(!!newBool);
+  }
+}
+
+/**
+ * 登録日セルの生値を <input type="date"> 用の yyyy-MM-dd（Asia/Tokyo）に変換する。
+ * 日付型 → 書式化、空 → ''、その他文字列 → そのまま（trim）。
+ * @param {*} v
+ * @return {string}
+ */
+function _registeredToInput(v) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
+  if (v == null) return '';
+  return String(v).trim();
+}
+
+/**
+ * yyyy-MM-dd 文字列を、日付型を保つための Date（Asia/Tokyo の暦日）に変換する。
+ * 空文字は '' のまま（セルをクリア）。想定外の文字列はそのまま返す。
+ * ※ スクリプトのタイムゾーンが Asia/Tokyo のため new Date(y,m,d) は JST 0:00 になる。
+ * @param {string} s
+ * @return {Date|string}
+ */
+function _registeredToCellValue(s) {
+  s = (s == null) ? '' : String(s).trim();
+  if (s === '') return '';
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return s;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/**
+ * 登録日専用の差分書き込み。提出値(yyyy-MM-dd/空)と、現在のセル生値を
+ * yyyy-MM-dd へ揃えて比較し、変わったときだけ書き込む（日付型を温存）。
+ * @param {Sheet} sheet
+ * @param {number} row
+ * @param {number} col0
+ * @param {string} submitted - yyyy-MM-dd または ''
+ * @param {*} curRaw - 現在セルの生値（Date など）
+ */
+function _setRegisteredIfChanged(sheet, row, col0, submitted, curRaw) {
+  var baseline = _registeredToInput(curRaw);
+  var sub = (submitted == null) ? '' : String(submitted).trim();
+  if (sub !== baseline) {
+    sheet.getRange(row, col0 + 1).setValue(_registeredToCellValue(sub));
   }
 }
 

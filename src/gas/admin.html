@@ -162,7 +162,7 @@
         <label class="field-label">家族ID<input id="f_familyId" type="text"></label>
         <label class="field-label">宛名<input id="f_name" type="text"></label>
         <label class="field-label">保護者LINE_USER_ID<input id="f_guardianId" type="text"></label>
-        <label class="field-label">登録日<input id="f_registered" type="text"></label>
+        <label class="field-label">登録日<input id="f_registered" type="date"></label>
         <label class="field-label">配信区分<input id="f_kubun" type="text">
           <span class="note">billing-line専用。schedule / proposal では参照しません</span></label>
         <label class="check-label"><input id="f_enabled" type="checkbox"> 配信有効フラグ（チェック＝TRUE）</label>
@@ -247,7 +247,7 @@
     setVal('f_familyId', 'F');       // 「F」をあらかじめ入れる。残りは手入力（自動採番しない）
     setVal('f_name', '');
     setVal('f_guardianId', '');
-    setVal('f_registered', '');
+    setVal('f_registered', DATA.today || ''); // 新規追加時のみ今日（Asia/Tokyo）を初期値に
     setVal('f_kubun', '');
     setChk('f_enabled', true);        // 新規の既定は TRUE
     document.getElementById('studentsArea').innerHTML = '';
